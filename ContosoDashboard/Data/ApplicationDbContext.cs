@@ -18,6 +18,10 @@ public class ApplicationDbContext : DbContext
     public DbSet<ProjectMember> ProjectMembers { get; set; } = null!;
     public DbSet<Announcement> Announcements { get; set; } = null!;
 
+    public DbSet<Document> Documents { get; set; } = null!;
+    public DbSet<DocumentShare> DocumentShares { get; set; } = null!;
+    public DbSet<DocumentActivity> DocumentActivities { get; set; } = null!;
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -63,6 +67,69 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<User>()
             .HasIndex(u => u.Email)
             .IsUnique();
+
+        // Documents
+        modelBuilder.Entity<Document>()
+            .HasOne(d => d.Uploader)
+            .WithMany()
+            .HasForeignKey(d => d.UploaderUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Document>()
+            .HasOne(d => d.Project)
+            .WithMany()
+            .HasForeignKey(d => d.ProjectId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<Document>()
+            .HasOne(d => d.Task)
+            .WithMany()
+            .HasForeignKey(d => d.TaskId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<Document>()
+            .HasIndex(d => new { d.UploaderUserId, d.UploadedUtc });
+
+        modelBuilder.Entity<Document>()
+            .HasIndex(d => new { d.ProjectId, d.UploadedUtc });
+
+        modelBuilder.Entity<Document>()
+            .HasIndex(d => new { d.TaskId, d.UploadedUtc });
+
+        modelBuilder.Entity<Document>()
+            .HasIndex(d => d.Category);
+
+        modelBuilder.Entity<Document>()
+            .HasIndex(d => d.IsDeleted);
+
+        modelBuilder.Entity<DocumentShare>()
+            .HasIndex(s => new { s.RecipientUserId, s.CreatedUtc });
+
+        modelBuilder.Entity<DocumentShare>()
+            .HasIndex(s => new { s.DocumentId, s.RecipientUserId })
+            .IsUnique();
+
+        // Avoid SQL Server multiple cascade paths (DocumentShares has two FKs to Users).
+        modelBuilder.Entity<DocumentShare>()
+            .HasOne(s => s.RecipientUser)
+            .WithMany()
+            .HasForeignKey(s => s.RecipientUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<DocumentShare>()
+            .HasOne(s => s.SharedByUser)
+            .WithMany()
+            .HasForeignKey(s => s.SharedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<DocumentActivity>()
+            .HasIndex(a => new { a.DocumentId, a.CreatedUtc });
+
+        modelBuilder.Entity<DocumentActivity>()
+            .HasIndex(a => new { a.UserId, a.CreatedUtc });
+
+        modelBuilder.Entity<DocumentActivity>()
+            .HasIndex(a => a.ActivityType);
 
         // Seed initial data
         SeedData(modelBuilder);

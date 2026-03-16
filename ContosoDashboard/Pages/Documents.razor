@@ -1,0 +1,317 @@
+@page "/documents"
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.AspNetCore.Components
+@attribute [Authorize]
+@inject IDocumentService DocumentService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>Documents - ContosoDashboard</PageTitle>
+
+<div class="container-fluid">
+    <div class="row mb-3">
+        <div class="col">
+            <h1>Documents</h1>
+            <p class="text-muted mb-0">Upload files and manage your personal documents.</p>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <div class="alert alert-danger" role="alert">@errorMessage</div>
+    }
+    @if (!string.IsNullOrWhiteSpace(successMessage))
+    {
+        <div class="alert alert-success" role="alert">@successMessage</div>
+    }
+
+    <div class="card mb-4">
+        <div class="card-header">
+            <strong>Upload</strong>
+        </div>
+        <div class="card-body">
+            <EditForm Model="upload" OnValidSubmit="HandleUploadAsync">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Title</label>
+                        <InputText class="form-control" @bind-Value="upload.Title" />
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label">Category</label>
+                        <InputSelect class="form-select" @bind-Value="upload.Category">
+                            @foreach (var c in DocumentRules.AllowedCategories)
+                            {
+                                <option value="@c">@c</option>
+                            }
+                        </InputSelect>
+                    </div>
+
+                    <div class="col-12">
+                        <label class="form-label">Description (optional)</label>
+                        <InputTextArea class="form-control" @bind-Value="upload.Description" rows="2" />
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label">Tags (optional)</label>
+                        <InputText class="form-control" @bind-Value="upload.Tags" placeholder="e.g. budget, Q1, draft" />
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label">File</label>
+                        <InputFile OnChange="OnFileSelected" />
+                        @if (!string.IsNullOrWhiteSpace(selectedFileLabel))
+                        {
+                            <div class="form-text">Selected: @selectedFileLabel</div>
+                        }
+                        <div class="form-text">
+                            Max size: @(DocumentRules.MaxFileSizeBytes / (1024 * 1024)) MB. Allowed: @string.Join(", ", DocumentRules.AllowedExtensions)
+                        </div>
+                    </div>
+
+                    <div class="col-12">
+                        <button class="btn btn-primary" type="submit" disabled="@isUploading">
+                            @if (isUploading)
+                            {
+                                <span>Uploading…</span>
+                            }
+                            else
+                            {
+                                <span>Upload</span>
+                            }
+                        </button>
+                    </div>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <strong>My Documents</strong>
+            <button class="btn btn-outline-secondary btn-sm" @onclick="ReloadAsync" disabled="@isLoading">Refresh</button>
+        </div>
+        <div class="card-body">
+            @if (isLoading)
+            {
+                <p><em>Loading…</em></p>
+            }
+            else if (documents == null || documents.Count == 0)
+            {
+                <div class="alert alert-info mb-0">No documents yet.</div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-striped align-middle">
+                        <thead>
+                            <tr>
+                                <th>Title</th>
+                                <th>Category</th>
+                                <th>File</th>
+                                <th class="text-end">Size</th>
+                                <th>Uploaded</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var d in documents)
+                            {
+                                <tr>
+                                    <td>
+                                        <div class="fw-semibold">@d.Title</div>
+                                        @if (!string.IsNullOrWhiteSpace(d.Description))
+                                        {
+                                            <div class="text-muted small text-truncate" style="max-width: 480px">@d.Description</div>
+                                        }
+                                    </td>
+                                    <td>@d.Category</td>
+                                    <td>
+                                        <span class="text-muted">@d.FileNameOriginal</span>
+                                    </td>
+                                    <td class="text-end">@FormatBytes(d.FileSizeBytes)</td>
+                                    <td>@d.UploadedUtc.ToLocalTime().ToString("g")</td>
+                                    <td class="text-end">
+                                        <a class="btn btn-outline-primary btn-sm" href="@($"/documents/file/{d.DocumentId}?mode=download")">Download</a>
+                                        @if (DocumentRules.PreviewableMimeTypes.Contains(d.FileType))
+                                        {
+                                            <a class="btn btn-outline-secondary btn-sm ms-1" target="_blank" href="@($"/documents/file/{d.DocumentId}?mode=preview")">Preview</a>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private sealed class UploadModel
+    {
+        [System.ComponentModel.DataAnnotations.Required]
+        [System.ComponentModel.DataAnnotations.MaxLength(255)]
+        public string Title { get; set; } = string.Empty;
+
+        [System.ComponentModel.DataAnnotations.Required]
+        public string Category { get; set; } = DocumentRules.AllowedCategories.First();
+
+        [System.ComponentModel.DataAnnotations.MaxLength(2000)]
+        public string? Description { get; set; }
+
+        [System.ComponentModel.DataAnnotations.MaxLength(500)]
+        public string? Tags { get; set; }
+    }
+
+    private UploadModel upload = new();
+    private IBrowserFile? selectedFile;
+    private string? selectedFileLabel;
+
+    private List<Document>? documents;
+    private bool isLoading;
+    private bool isUploading;
+    private string? errorMessage;
+    private string? successMessage;
+    private int currentUserId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        currentUserId = await GetCurrentUserIdAsync();
+        await ReloadAsync();
+    }
+
+    private async Task<int> GetCurrentUserIdAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier);
+        if (userIdClaim != null && int.TryParse(userIdClaim.Value, out var userId))
+        {
+            return userId;
+        }
+
+        return 0;
+    }
+
+    private async Task ReloadAsync()
+    {
+        errorMessage = null;
+        successMessage = null;
+
+        if (currentUserId <= 0)
+        {
+            documents = new List<Document>();
+            return;
+        }
+
+        isLoading = true;
+        try
+        {
+            documents = await DocumentService.GetMyDocumentsAsync(currentUserId);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void OnFileSelected(InputFileChangeEventArgs e)
+    {
+        errorMessage = null;
+        successMessage = null;
+        selectedFile = e.File;
+        selectedFileLabel = selectedFile == null ? null : $"{selectedFile.Name} ({FormatBytes(selectedFile.Size)})";
+    }
+
+    private async Task HandleUploadAsync()
+    {
+        errorMessage = null;
+        successMessage = null;
+
+        if (currentUserId <= 0)
+        {
+            errorMessage = "Unable to determine current user.";
+            return;
+        }
+
+        if (selectedFile == null)
+        {
+            errorMessage = "Please choose a file.";
+            return;
+        }
+
+        // Client-side validation (server re-validates too).
+        if (selectedFile.Size <= 0)
+        {
+            errorMessage = "The selected file is empty.";
+            return;
+        }
+        if (selectedFile.Size > DocumentRules.MaxFileSizeBytes)
+        {
+            errorMessage = $"File exceeds maximum size of {DocumentRules.MaxFileSizeBytes / (1024 * 1024)} MB.";
+            return;
+        }
+        var ext = Path.GetExtension(selectedFile.Name);
+        if (string.IsNullOrWhiteSpace(ext) || !DocumentRules.AllowedExtensions.Contains(ext))
+        {
+            errorMessage = "Unsupported file type.";
+            return;
+        }
+
+        isUploading = true;
+        try
+        {
+            await using var stream = selectedFile.OpenReadStream(DocumentRules.MaxFileSizeBytes);
+            await DocumentService.UploadAsync(
+                requestingUserId: currentUserId,
+                fileStream: stream,
+                originalFileName: selectedFile.Name,
+                contentType: selectedFile.ContentType,
+                fileSizeBytes: selectedFile.Size,
+                title: upload.Title,
+                category: upload.Category,
+                description: upload.Description,
+                projectId: null,
+                tags: upload.Tags,
+                taskId: null);
+
+            successMessage = "Uploaded successfully.";
+
+            // Reset UX.
+            selectedFile = null;
+            selectedFileLabel = null;
+            upload = new UploadModel();
+
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            isUploading = false;
+        }
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        var kb = bytes / 1024d;
+        if (kb < 1024) return $"{kb:0.#} KB";
+        var mb = kb / 1024d;
+        if (mb < 1024) return $"{mb:0.#} MB";
+        var gb = mb / 1024d;
+        return $"{gb:0.#} GB";
+    }
+}

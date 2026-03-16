@@ -44,6 +44,13 @@ builder.Services.AddScoped<IProjectService, ProjectService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
 
+// Document upload/management feature
+builder.Services.AddScoped<IDocumentService, DocumentService>();
+builder.Services.AddScoped<IFileStorageService, LocalFileStorageService>();
+builder.Services.AddScoped<IFileScanService, NoOpFileScanService>();
+
+// Add HttpContextAccessor for accessing user claims
+
 // Add HttpContextAccessor for accessing user claims
 builder.Services.AddHttpContextAccessor();
 
@@ -56,6 +63,14 @@ using (var scope = app.Services.CreateScope())
     try
     {
         var context = services.GetRequiredService<ApplicationDbContext>();
+        // Training app note:
+        // EnsureCreated() doesn't update an existing schema. When the model changes (like adding Documents),
+        // we reset the local training DB in Development to avoid "Invalid object name" errors.
+        if (app.Environment.IsDevelopment())
+        {
+            context.Database.EnsureDeleted();
+        }
+
         context.Database.EnsureCreated(); // For development - use migrations in production
     }
     catch (Exception ex)
@@ -105,6 +120,7 @@ app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 
+app.MapRazorPages();
 app.MapBlazorHub();
 app.MapFallbackToPage("/_Host");
 
