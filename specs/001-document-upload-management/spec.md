@@ -20,7 +20,7 @@ Employees need to upload work-related documents from their computer, assign them
 1. **Given** an authenticated employee user and a supported file on their computer, **When** they upload the file with a title, category, and optional project selection, **Then** the document is saved, appears in their "My Documents" list with correct metadata, and a success message is shown.
 2. **Given** an authenticated employee user and a file larger than the allowed size, **When** they attempt to upload the file, **Then** the upload is rejected and a clear error message explains the size limit.
 3. **Given** an authenticated employee user and a file with an unsupported type, **When** they attempt to upload the file, **Then** the upload is rejected and a clear error message explains allowed file types.
-4. **Given** an authenticated employee user, **When** they open "My Documents" and sort by upload date or category, **Then** the list is sorted accordingly and loads within the expected performance budget.
+4. **Given** an authenticated employee user, **When** they open "My Documents" and sort by upload date or category, **Then** the list is sorted accordingly and loads within the expected performance budget, and only documents they personally uploaded or that are explicitly shared with them appear in this view.
 
 ---
 
@@ -46,13 +46,14 @@ Users need to search for documents across their accessible scope using keywords 
 
 **Why this priority**: Fast search reduces time spent hunting for files and supports the business goal of lowering the time to locate documents.
 
-**Independent Test**: Can be fully tested by uploading a variety of documents with different titles, descriptions, tags, uploaders, and projects, then running searches and filters to verify that expected documents appear and others do not.
+**Independent Test**: Can be fully tested by uploading a variety of documents with different titles, descriptions, tags, uploaders, and projects, then running searches and filters from both global and project-specific contexts to verify that expected documents appear within the correct scope and others do not.
 
 **Acceptance Scenarios**:
 
-1. **Given** multiple documents with varying titles, descriptions, tags, and associated projects, **When** a user searches by a keyword contained in a document's title, **Then** that document appears in the results and the results only include documents the user is authorized to access.
-2. **Given** the same set of documents, **When** a user filters by category, associated project, or date range, **Then** the results list only includes documents that match all selected filters.
-3. **Given** a typical dataset of up to several hundred documents visible to a user, **When** the user performs a search, **Then** results are returned within the target response time (around 2 seconds under normal conditions).
+1. **Given** multiple documents with varying titles, descriptions, tags, and associated projects, **When** a user opens a global documents area and searches by a keyword contained in a document's title, **Then** that document appears in the results and the results only include documents the user is authorized to access across all of their accessible documents (personal, project, and shared).
+2. **Given** the same set of documents, **When** a user filters by category, associated project, or date range in the global documents area, **Then** the results list only includes documents that match all selected filters across their accessible scope.
+3. **Given** a typical dataset of up to several hundred documents visible to a user, **When** the user performs a search from the global documents area, **Then** results are returned within the target response time (around 2 seconds under normal conditions).
+4. **Given** a user who is viewing a specific project, **When** they search from a project-scoped documents or task view, **Then** the search results are limited to documents associated with that project and still respect authorization.
 
 ---
 
@@ -93,8 +94,7 @@ Users want to see relevant documents from within existing parts of the dashboard
 
 - What happens when a user attempts to upload more files at once than the system reasonably supports? The spec assumes the UI will limit the number of concurrent uploads and provide clear feedback if limits are exceeded.
 - How does the system handle document uploads when the user loses connectivity or the upload fails mid-way? The system should not create incomplete metadata records and should show a clear error message, allowing the user to retry.
-- What happens when a project is deleted or a user is removed from a project that has associated documents? Documents should not become globally visible; they should remain protected and visible only to users who still have appropriate roles or ownership.
-- How does the system handle documents whose associated project has been archived or closed? The spec assumes documents remain accessible for audit/history purposes, but may be flagged as belonging to archived projects.
+- What happens when a project is archived or a user is removed from a project that has associated documents? Documents should not become globally visible; they should remain protected and visible only to users who still have appropriate roles or ownership, and documents for archived projects should be clearly marked as belonging to an archived project but remain accessible for audit/history purposes.
 - What happens when two users attempt to edit the same document metadata at nearly the same time? The system should apply last-write-wins behavior with validation and avoid corrupting data, while keeping the UX simple for training purposes.
 
 ## Requirements *(mandatory)*
